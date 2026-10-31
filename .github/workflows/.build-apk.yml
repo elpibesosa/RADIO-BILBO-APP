@@ -1,0 +1,60 @@
+name: Compilar APK de Radio Bilbo
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Descomprimir el proyecto
+        run: |
+          for z in *.zip; do unzip -oq "$z"; done
+          ls radiobilbo-app
+
+      - name: Instalar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Preparar el Android SDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+      - name: Instalar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compilar el APK
+        working-directory: radiobilbo-app
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Renombrar el APK
+        run: cp radiobilbo-app/app/build/outputs/apk/debug/app-debug.apk RadioBilbo.apk
+
+      - name: Guardar el APK en esta ejecución
+        uses: actions/upload-artifact@v4
+        with:
+          name: RadioBilbo-APK
+          path: RadioBilbo.apk
+
+      - name: Publicar el APK para descargar (link fijo)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete apk-actual --yes --cleanup-tag || true
+          gh release create apk-actual RadioBilbo.apk \
+            --target "${{ github.sha }}" \
+            --title "Radio Bilbo 91.5 FM - App para Android" \
+            --notes "Descargá RadioBilbo.apk e instalalo en tu celular Android."
